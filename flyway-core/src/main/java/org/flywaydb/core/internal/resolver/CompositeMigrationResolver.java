@@ -1,5 +1,5 @@
-/**
- * Copyright 2010-2016 Boxfuse GmbH
+/*
+ * Copyright 2010-2017 Boxfuse GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -67,13 +67,12 @@ public class CompositeMigrationResolver implements MigrationResolver {
                                       PlaceholderReplacer placeholderReplacer,
                                       MigrationResolver... customMigrationResolvers) {
         if (!configuration.isSkipDefaultResolvers()) {
-            for (Location location : locations.getLocations()) {
-                migrationResolvers.add(new SqlMigrationResolver(dbSupport, scanner, location, placeholderReplacer, configuration));
-                migrationResolvers.add(new JdbcMigrationResolver(scanner, location, configuration));
 
-                if (new FeatureDetector(scanner.getClassLoader()).isSpringJdbcAvailable()) {
-                    migrationResolvers.add(new SpringJdbcMigrationResolver(scanner, location, configuration));
-                }
+            migrationResolvers.add(new SqlMigrationResolver(dbSupport, scanner, locations, placeholderReplacer, configuration));
+            migrationResolvers.add(new JdbcMigrationResolver(scanner, locations, configuration));
+
+            if (new FeatureDetector(scanner.getClassLoader()).isSpringJdbcAvailable()) {
+                migrationResolvers.add(new SpringJdbcMigrationResolver(scanner, locations, configuration));
             }
         }
 

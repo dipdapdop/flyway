@@ -1,5 +1,5 @@
-/**
- * Copyright 2010-2016 Boxfuse GmbH
+/*
+ * Copyright 2010-2017 Boxfuse GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -43,6 +43,7 @@ import org.flywaydb.core.internal.dbsupport.Schema;
 import org.flywaydb.core.internal.resolver.FlywayConfigurationForTests;
 import org.flywaydb.core.internal.resolver.sql.SqlMigrationResolver;
 import org.flywaydb.core.internal.util.Location;
+import org.flywaydb.core.internal.util.Locations;
 import org.flywaydb.core.internal.util.PlaceholderReplacer;
 import org.flywaydb.core.internal.util.jdbc.DriverDataSource;
 import org.flywaydb.core.internal.util.scanner.Scanner;
@@ -74,7 +75,7 @@ public class DB2zOSMigrationMediumTest extends MigrationTestCase {
     protected void assertChecksum(MigrationInfo migrationInfo) {
         SqlMigrationResolver sqlMigrationResolver = new SqlMigrationResolver(
                 dbSupport, new Scanner(Thread.currentThread().getContextClassLoader()),
-                new Location(getBasedir() + "/default"),
+                new Locations(getBasedir() + "/default"),
                 PlaceholderReplacer.NO_PLACEHOLDERS,
                 FlywayConfigurationForTests.create());
         List<ResolvedMigration> migrations = sqlMigrationResolver.resolveMigrations();
@@ -91,7 +92,7 @@ public class DB2zOSMigrationMediumTest extends MigrationTestCase {
         String password = customProperties.getProperty("db2.password", "password");
         String url = customProperties.getProperty("db2.url", "jdbc:db2://host:port/schemaname");
 
-        return new DriverDataSource(Thread.currentThread().getContextClassLoader(), null, url, user, password);
+        return new DriverDataSource(Thread.currentThread().getContextClassLoader(), null, url, user, password, null);
     }
 
     @Override

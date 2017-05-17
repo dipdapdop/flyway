@@ -1,5 +1,5 @@
-/**
- * Copyright 2010-2016 Boxfuse GmbH
+/*
+ * Copyright 2010-2017 Boxfuse GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,8 @@
  */
 package org.flywaydb.core.internal.dbsupport.postgresql;
 
-import org.flywaydb.core.api.FlywayException;
 import org.flywaydb.core.internal.dbsupport.DbSupport;
+import org.flywaydb.core.internal.dbsupport.FlywaySqlException;
 import org.flywaydb.core.internal.dbsupport.JdbcTemplate;
 import org.flywaydb.core.internal.dbsupport.Schema;
 import org.flywaydb.core.internal.dbsupport.SqlStatementBuilder;
@@ -85,18 +85,21 @@ public class PostgreSQLDbSupport extends DbSupport {
 
     @Override
     public void changeCurrentSchemaTo(Schema schema) {
-        if (schema.getName().equals(originalSchema) || originalSchema.startsWith(schema.getName() + ",") || !schema.exists()) {
-            return;
-        }
-
         try {
+            // First reset the role in case a migration or callback changed it
+            jdbcTemplate.executeStatement("RESET ROLE");
+
+            if (schema.getName().equals(originalSchema) || originalSchema.startsWith(schema.getName() + ",") || !schema.exists()) {
+                return;
+            }
+
             if (StringUtils.hasText(originalSchema)) {
                 doChangeCurrentSchemaTo(schema.toString() + "," + originalSchema);
             } else {
                 doChangeCurrentSchemaTo(schema.toString());
             }
         } catch (SQLException e) {
-            throw new FlywayException("Error setting current schema to " + schema, e);
+            throw new FlywaySqlException("Error setting current schema to " + schema, e);
         }
     }
 
@@ -156,7 +159,7 @@ public class PostgreSQLDbSupport extends DbSupport {
 
     @Override
     public <T> T lock(Table table, Callable<T> callable) {
-        return new PostgreSQLAdvisoryLockTemplate(jdbcTemplate).execute(callable);
+        return new PostgreSQLAdvisoryLockTemplate(jdbcTemplate, table.toString().hashCode()).execute(callable);
     }
 
     @Override

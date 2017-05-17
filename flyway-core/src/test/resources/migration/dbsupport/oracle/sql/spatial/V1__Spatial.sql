@@ -1,5 +1,5 @@
 --
--- Copyright 2010-2016 Boxfuse GmbH
+-- Copyright 2010-2017 Boxfuse GmbH
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -13,6 +13,13 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 --
+
+BEGIN
+  IF USER != SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') THEN
+    RAISE_APPLICATION_ERROR(-20000, 'Locator/Spatial indexes can be created in user''s own schema only!');
+  END IF;
+END;
+/
 
 CREATE TABLE GEO_TEST (
   GEO MDSYS.SDO_GEOMETRY

@@ -1,5 +1,5 @@
-/**
- * Copyright 2010-2016 Boxfuse GmbH
+/*
+ * Copyright 2010-2017 Boxfuse GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -78,7 +78,7 @@ public class SqlMigrationExecutor implements MigrationExecutor {
 
     private synchronized SqlScript getSqlScript() {
         if (sqlScript == null) {
-            sqlScript = new SqlScript(dbSupport, sqlScriptResource, placeholderReplacer, configuration.getEncoding(), configuration.isAllowMixedMigrations());
+            sqlScript = new SqlScript(dbSupport, sqlScriptResource, placeholderReplacer, configuration.getEncoding(), configuration.isMixed());
         }
         return sqlScript;
     }

@@ -1,5 +1,5 @@
-/**
- * Copyright 2010-2016 Boxfuse GmbH
+/*
+ * Copyright 2010-2017 Boxfuse GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.flywaydb.core.internal.dbsupport.hsql;
+package org.flywaydb.core.internal.dbsupport.greenplum;
 
 import org.flywaydb.core.migration.ConcurrentMigrationTestCase;
 import org.flywaydb.core.internal.util.jdbc.DriverDataSource;
@@ -24,12 +24,18 @@ import javax.sql.DataSource;
 import java.util.Properties;
 
 /**
- * Test to demonstrate the migration functionality using H2.
+ * Test to demonstrate the migration functionality using GreenPlum.
  */
-@Category(DbCategory.HSQL.class)
-public class HsqlDbConcurrentMigrationMediumTest extends ConcurrentMigrationTestCase {
+@Category(DbCategory.GreenPlum.class)
+public class GreenPlumConcurrentMigrationMediumTest extends ConcurrentMigrationTestCase {
     @Override
     protected DataSource createDataSource(Properties customProperties) {
-        return new DriverDataSource(Thread.currentThread().getContextClassLoader(), null, "jdbc:hsqldb:mem:flyway_db_concurrent", "SA", "");
+        String user = customProperties.getProperty("greenplum.user", "flyway");
+        // Password must be at least 8 characters, with upper and lower case:
+        String password = customProperties.getProperty("greenplum.password", "Flyway123");
+        // Create an ssh tunnel on port 5439 to your Redshift instance before running this test!
+        String url = customProperties.getProperty("greenplum.url", "jdbc:pivotal:greenplum://localhost:5432;DatabaseName=flyway;");
+
+        return new DriverDataSource(Thread.currentThread().getContextClassLoader(), null, url, user, password);
     }
 }

@@ -1,5 +1,5 @@
-/**
- * Copyright 2010-2016 Boxfuse GmbH
+/*
+ * Copyright 2010-2017 Boxfuse GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import org.flywaydb.core.internal.resolver.FlywayConfigurationForTests;
 import org.flywaydb.core.internal.resolver.spring.dummy.V2__InterfaceBasedMigration;
 import org.flywaydb.core.internal.resolver.spring.dummy.Version3dot5;
 import org.flywaydb.core.internal.util.Location;
+import org.flywaydb.core.internal.util.Locations;
 import org.flywaydb.core.internal.util.scanner.Scanner;
 import org.junit.Test;
 
@@ -41,7 +42,7 @@ public class SpringJdbcMigrationResolverSmallTest {
     @Test
     public void resolveMigrations() {
         SpringJdbcMigrationResolver springJdbcMigrationResolver =
-                new SpringJdbcMigrationResolver(scanner, new Location("org/flywaydb/core/internal/resolver/spring/dummy"), config);
+                new SpringJdbcMigrationResolver(scanner, new Locations("org/flywaydb/core/internal/resolver/spring/dummy"), config);
         Collection<ResolvedMigration> migrations = springJdbcMigrationResolver.resolveMigrations();
 
         assertEquals(2, migrations.size());

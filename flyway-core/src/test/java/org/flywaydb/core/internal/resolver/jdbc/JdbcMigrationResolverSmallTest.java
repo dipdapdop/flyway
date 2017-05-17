@@ -1,5 +1,5 @@
-/**
- * Copyright 2010-2016 Boxfuse GmbH
+/*
+ * Copyright 2010-2017 Boxfuse GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import org.flywaydb.core.internal.resolver.FlywayConfigurationForTests;
 import org.flywaydb.core.internal.resolver.jdbc.dummy.V2__InterfaceBasedMigration;
 import org.flywaydb.core.internal.resolver.jdbc.dummy.Version3dot5;
 import org.flywaydb.core.internal.util.Location;
+import org.flywaydb.core.internal.util.Locations;
 import org.flywaydb.core.internal.util.scanner.Scanner;
 import org.junit.Test;
 
@@ -42,13 +43,13 @@ public class JdbcMigrationResolverSmallTest {
 
     @Test(expected = FlywayException.class)
     public void broken() {
-        new JdbcMigrationResolver(scanner, new Location("org/flywaydb/core/internal/resolver/jdbc/error"), config).resolveMigrations();
+        new JdbcMigrationResolver(scanner, new Locations("org/flywaydb/core/internal/resolver/jdbc/error"), config).resolveMigrations();
     }
 
     @Test
     public void resolveMigrations() throws SQLException {
         JdbcMigrationResolver jdbcMigrationResolver =
-                new JdbcMigrationResolver(scanner, new Location("org/flywaydb/core/internal/resolver/jdbc/dummy"), config);
+                new JdbcMigrationResolver(scanner, new Locations("org/flywaydb/core/internal/resolver/jdbc/dummy"), config);
         Collection<ResolvedMigration> migrations = jdbcMigrationResolver.resolveMigrations();
 
         assertEquals(3, migrations.size());

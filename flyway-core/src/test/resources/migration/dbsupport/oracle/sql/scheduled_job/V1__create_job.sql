@@ -1,5 +1,5 @@
 --
--- Copyright 2010-2016 Boxfuse GmbH
+-- Copyright 2010-2017 Boxfuse GmbH
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -14,9 +14,11 @@
 -- limitations under the License.
 --
 
+declare
+  l_prefix VARCHAR2(131) := '"' || SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') || '".';
 begin
   dbms_scheduler.create_job(
-    job_name    => 'test_job',
+    job_name    => l_prefix || 'test_job',
     job_type    => 'PLSQL_BLOCK',
     job_action  => 'select 1 from dual');
 end;

@@ -1,5 +1,5 @@
-/**
- * Copyright 2010-2016 Boxfuse GmbH
+/*
+ * Copyright 2010-2017 Boxfuse GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -173,6 +173,19 @@ public class Flyway implements FlywayConfiguration {
     private String sqlMigrationSuffix = ".sql";
 
     /**
+     * Ignore missing migrations when reading the metadata table. These are migrations that were performed by an
+     * older deployment of the application that are no longer available in this version. For example: we have migrations
+     * available on the classpath with versions 1.0 and 3.0. The metadata table indicates that a migration with version 2.0
+     * (unknown to us) has also been applied. Instead of bombing out (fail fast) with an exception, a
+     * warning is logged and Flyway continues normally. This is useful for situations where one must be able to deploy
+     * a newer version of the application even though it doesn't contain migrations included with an older one anymore.
+     *
+     * {@code true} to continue normally and log a warning, {@code false} to fail fast with an exception.
+     * (default: {@code false})
+     */
+    private boolean ignoreMissingMigrations;
+
+    /**
      * Ignore future migrations when reading the metadata table. These are migrations that were performed by a
      * newer deployment of the application that are not yet available in this version. For example: we have migrations
      * available on the classpath up to version 3.0. The metadata table indicates that a migration to version 4.0
@@ -276,11 +289,6 @@ public class Flyway implements FlywayConfiguration {
     private boolean skipDefaultResolvers;
 
     /**
-     * Whether Flyway created the DataSource.
-     */
-    private boolean createdDataSource;
-
-    /**
      * The dataSource to use to access the database. Must have the necessary privileges to execute ddl.
      */
     private DataSource dataSource;
@@ -297,10 +305,24 @@ public class Flyway implements FlywayConfiguration {
 
     /**
      * Whether to allow mixing transactional and non-transactional statements within the same migration.
-     *
+     * <p>
      * {@code true} if mixed migrations should be allowed. {@code false} if an error should be thrown instead. (default: {@code false})
      */
-    private boolean allowMixedMigrations;
+    private boolean mixed;
+
+    /**
+     * Whether to group all pending migrations together in the same transaction when applying them (only recommended for databases with support for DDL transactions).
+     *
+     * {@code true} if migrations should be grouped. {@code false} if they should be applied individually instead. (default: {@code false})
+     */
+    private boolean group;
+
+    /**
+     * The username that will be recorded in the metadata table as having applied the migration.
+     * <p>
+     * {@code null} for the current database user of the connection. (default: {@code null}).
+     */
+    private String installedBy;
 
     /**
      * Creates a new instance of Flyway. This is your starting point.
@@ -376,6 +398,11 @@ public class Flyway implements FlywayConfiguration {
     @Override
     public String getSqlMigrationSuffix() {
         return sqlMigrationSuffix;
+    }
+
+    @Override
+    public boolean isIgnoreMissingMigrations() {
+        return ignoreMissingMigrations;
     }
 
     @Override
@@ -458,18 +485,83 @@ public class Flyway implements FlywayConfiguration {
     }
 
     @Override
-    public boolean isAllowMixedMigrations() {
-        return allowMixedMigrations;
+    public boolean isMixed() {
+        return mixed;
     }
 
     /**
+     * @deprecated Use <code>isMixed()</code> instead. Will be removed in Flyway 5.0.
+     */
+    @Deprecated
+    @Override
+    public boolean isAllowMixedMigrations() {
+        return mixed;
+    }
+
+    @Override
+    public String getInstalledBy() {
+        return installedBy;
+    }
+
+    @Override
+    public boolean isGroup() {
+        return group;
+    }
+
+    /**
+     * Whether to group all pending migrations together in the same transaction when applying them (only recommended for databases with support for DDL transactions).
      *
+     * @param group {@code true} if migrations should be grouped. {@code false} if they should be applied individually instead. (default: {@code false})
+     */
+    public void setGroup(boolean group) {
+        this.group = group;
+    }
+
+    /**
+     * The username that will be recorded in the metadata table as having applied the migration.
+     *
+     * @param installedBy The username or {@code null} for the current database user of the connection. (default: {@code null}).
+     */
+    public void setInstalledBy(String installedBy) {
+        if ("".equals(installedBy)) {
+            installedBy = null;
+        }
+        this.installedBy = installedBy;
+    }
+
+    /**
+     * Whether to allow mixing transactional and non-transactional statements within the same migration.
+     *
+     * @param mixed {@code true} if mixed migrations should be allowed. {@code false} if an error should be thrown instead. (default: {@code false})
+     */
+    public void setMixed(boolean mixed) {
+        this.mixed = mixed;
+    }
+
+    /**
      * Whether to allow mixing transactional and non-transactional statements within the same migration.
      *
      * @param allowMixedMigrations {@code true} if mixed migrations should be allowed. {@code false} if an error should be thrown instead. (default: {@code false})
+     * @deprecated Use <code>setMixed()</code> instead. Will be removed in Flyway 5.0.
      */
+    @Deprecated
     public void setAllowMixedMigrations(boolean allowMixedMigrations) {
-        this.allowMixedMigrations = allowMixedMigrations;
+        this.mixed = allowMixedMigrations;
+    }
+
+    /**
+     * Ignore missing migrations when reading the metadata table. These are migrations that were performed by an
+     * older deployment of the application that are no longer available in this version. For example: we have migrations
+     * available on the classpath with versions 1.0 and 3.0. The metadata table indicates that a migration with version 2.0
+     * (unknown to us) has also been applied. Instead of bombing out (fail fast) with an exception, a
+     * warning is logged and Flyway continues normally. This is useful for situations where one must be able to deploy
+     * a newer version of the application even though it doesn't contain migrations included with an older one anymore.
+     *
+     * @param ignoreMissingMigrations {@code true} to continue normally and log a warning, {@code false} to fail fast with an exception.
+     * (default: {@code false})
+     */
+    public void setIgnoreMissingMigrations(boolean ignoreMissingMigrations) {
+        this.ignoreMissingMigrations = ignoreMissingMigrations;
     }
 
     /**
@@ -713,7 +805,6 @@ public class Flyway implements FlywayConfiguration {
      */
     public void setDataSource(DataSource dataSource) {
         this.dataSource = dataSource;
-        createdDataSource = false;
     }
 
     /**
@@ -727,8 +818,7 @@ public class Flyway implements FlywayConfiguration {
      * @param initSqls The (optional) sql statements to execute to initialize a connection immediately after obtaining it.
      */
     public void setDataSource(String url, String user, String password, String... initSqls) {
-        this.dataSource = new DriverDataSource(classLoader, null, url, user, password, initSqls);
-        createdDataSource = true;
+        this.dataSource = new DriverDataSource(classLoader, null, url, user, password, null, initSqls);
     }
 
     /**
@@ -887,7 +977,7 @@ public class Flyway implements FlywayConfiguration {
 
                 new DbSchemas(connectionMetaDataTable, schemas, metaDataTable).create();
 
-                if (!metaDataTable.hasSchemasMarker() && !metaDataTable.hasBaselineMarker() && !metaDataTable.hasAppliedMigrations()) {
+                if (!metaDataTable.exists()) {
                     List<Schema> nonEmptySchemas = new ArrayList<Schema>();
                     for (Schema schema : schemas) {
                         if (!schema.empty()) {
@@ -895,24 +985,17 @@ public class Flyway implements FlywayConfiguration {
                         }
                     }
 
-                    if (baselineOnMigrate || nonEmptySchemas.isEmpty()) {
-                        if (baselineOnMigrate && !nonEmptySchemas.isEmpty()) {
+                    if (!nonEmptySchemas.isEmpty()) {
+                        if (baselineOnMigrate) {
                             new DbBaseline(connectionMetaDataTable, dbSupport, metaDataTable, schemas[0], baselineVersion, baselineDescription, flywayCallbacks).baseline();
-                        }
-                    } else {
-                        if (nonEmptySchemas.size() == 1) {
-                            Schema schema = nonEmptySchemas.get(0);
-                            //Check whether we only have an empty metadata table in an otherwise empty schema
-                            if (schema.allTables().length != 1 || !schema.getTable(table).exists()) {
-                                throw new FlywayException("Found non-empty schema " + schema
+                        } else {
+                            // Second check for MySQL which is sometimes flaky otherwise
+                            if (!metaDataTable.exists()) {
+                                throw new FlywayException("Found non-empty schema(s) "
+                                        + StringUtils.collectionToCommaDelimitedString(nonEmptySchemas)
                                         + " without metadata table! Use baseline()"
                                         + " or set baselineOnMigrate to true to initialize the metadata table.");
                             }
-                        } else {
-                            throw new FlywayException("Found non-empty schemas "
-                                    + StringUtils.collectionToCommaDelimitedString(nonEmptySchemas)
-                                    + " without metadata table! Use baseline()"
-                                    + " or set baselineOnMigrate to true to initialize the metadata table.");
                         }
                     }
                 }
@@ -939,11 +1022,11 @@ public class Flyway implements FlywayConfiguration {
      * to detect accidental changes that may prevent the schema(s) from being recreated exactly.</p>
      * <p>Validation fails if</p>
      * <ul>
-     *     <li>differences in migration names, types or checksums are found</li>
-     *     <li>versions have been applied that aren't resolved locally anymore</li>
-     *     <li>versions have been resolved that haven't been applied yet</li>
+     * <li>differences in migration names, types or checksums are found</li>
+     * <li>versions have been applied that aren't resolved locally anymore</li>
+     * <li>versions have been resolved that haven't been applied yet</li>
      * </ul>
-     *
+     * <p>
      * <img src="https://flywaydb.org/assets/balsamiq/command-validate.png" alt="validate">
      *
      * @throws FlywayException when the validation failed.
@@ -972,11 +1055,12 @@ public class Flyway implements FlywayConfiguration {
                             MetaDataTable metaDataTable, Schema[] schemas, FlywayCallback[] flywayCallbacks, boolean pending) {
         String validationError =
                 new DbValidate(connectionMetaDataTable, dbSupport, metaDataTable, schemas[0], migrationResolver,
-                        target, outOfOrder, pending, ignoreFutureMigrations, flywayCallbacks).validate();
+                        target, outOfOrder, pending, ignoreMissingMigrations, ignoreFutureMigrations, flywayCallbacks).validate();
 
         if (validationError != null) {
             if (cleanOnValidationError) {
                 new DbClean(connectionMetaDataTable, dbSupport, metaDataTable, schemas, flywayCallbacks, cleanDisabled).clean();
+                metaDataTable.clearCache();
             } else {
                 throw new FlywayException("Validate failed: " + validationError);
             }
@@ -1026,7 +1110,8 @@ public class Flyway implements FlywayConfiguration {
                     }
 
                     MigrationInfoServiceImpl migrationInfoService =
-                            new MigrationInfoServiceImpl(migrationResolver, metaDataTable, target, outOfOrder, true, true);
+                            new MigrationInfoServiceImpl(migrationResolver, metaDataTable, target, outOfOrder,
+                                    true, true, true);
                     migrationInfoService.refresh();
 
                     for (final FlywayCallback callback : flywayCallbacks) {
@@ -1144,7 +1229,7 @@ public class Flyway implements FlywayConfiguration {
         String passwordProp = getValueAndRemoveEntry(props, "flyway.password");
 
         if (StringUtils.hasText(urlProp)) {
-            setDataSource(new DriverDataSource(classLoader, driverProp, urlProp, userProp, passwordProp));
+            setDataSource(new DriverDataSource(classLoader, driverProp, urlProp, userProp, passwordProp, null));
         } else if (!StringUtils.hasText(urlProp) &&
                 (StringUtils.hasText(driverProp) || StringUtils.hasText(userProp) || StringUtils.hasText(passwordProp))) {
             LOG.warn("Discarding INCOMPLETE dataSource configuration! flyway.url must be set.");
@@ -1218,6 +1303,10 @@ public class Flyway implements FlywayConfiguration {
         if (baselineOnMigrateProp != null) {
             setBaselineOnMigrate(Boolean.parseBoolean(baselineOnMigrateProp));
         }
+        String ignoreMissingMigrationsProp = getValueAndRemoveEntry(props, "flyway.ignoreMissingMigrations");
+        if (ignoreMissingMigrationsProp != null) {
+            setIgnoreMissingMigrations(Boolean.parseBoolean(ignoreMissingMigrationsProp));
+        }
         String ignoreFutureMigrationsProp = getValueAndRemoveEntry(props, "flyway.ignoreFutureMigrations");
         if (ignoreFutureMigrationsProp != null) {
             setIgnoreFutureMigrations(Boolean.parseBoolean(ignoreFutureMigrationsProp));
@@ -1270,6 +1359,21 @@ public class Flyway implements FlywayConfiguration {
         String allowMixedMigrationsProp = getValueAndRemoveEntry(props, "flyway.allowMixedMigrations");
         if (allowMixedMigrationsProp != null) {
             setAllowMixedMigrations(Boolean.parseBoolean(allowMixedMigrationsProp));
+        }
+
+        String mixedProp = getValueAndRemoveEntry(props, "flyway.mixed");
+        if (mixedProp != null) {
+            setMixed(Boolean.parseBoolean(mixedProp));
+        }
+
+        String groupProp = getValueAndRemoveEntry(props, "flyway.group");
+        if (groupProp != null) {
+            setGroup(Boolean.parseBoolean(groupProp));
+        }
+
+        String installedByProp = getValueAndRemoveEntry(props, "flyway.installedBy");
+        if (installedByProp != null) {
+            setInstalledBy(installedByProp);
         }
 
         for (String key : props.keySet()) {
@@ -1351,19 +1455,15 @@ public class Flyway implements FlywayConfiguration {
                 ConfigurationInjectionUtils.injectFlywayConfiguration(callback, this);
             }
 
-            MetaDataTable metaDataTable = new MetaDataTableImpl(dbSupport, schemas[0].getTable(table));
+            MetaDataTable metaDataTable = new MetaDataTableImpl(dbSupport, schemas[0].getTable(table), installedBy);
             if (metaDataTable.upgradeIfNecessary()) {
-                new DbRepair(dbSupport, connectionMetaDataTable, schemas[0], migrationResolver, metaDataTable, callbacks).repairChecksums();
+                new DbRepair(dbSupport, connectionMetaDataTable, schemas[0], migrationResolver, metaDataTable, callbacks).repairChecksumsAndDescriptions();
                 LOG.info("Metadata table " + table + " successfully upgraded to the Flyway 4.0 format.");
             }
 
             result = command.execute(connectionMetaDataTable, migrationResolver, metaDataTable, dbSupport, schemas, callbacks);
         } finally {
             JdbcUtils.closeConnection(connectionMetaDataTable);
-
-            if ((dataSource instanceof DriverDataSource) && createdDataSource) {
-                ((DriverDataSource) dataSource).close();
-            }
         }
         return result;
     }

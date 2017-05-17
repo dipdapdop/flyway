@@ -1,5 +1,5 @@
 --
--- Copyright 2010-2016 Boxfuse GmbH
+-- Copyright 2010-2017 Boxfuse GmbH
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -25,8 +25,6 @@ CREATE TABLE "${schema}"."${table}" (
     "installed_on" TIMESTAMP NOT NULL DEFAULT now(),
     "execution_time" INTEGER NOT NULL,
     "success" BOOLEAN NOT NULL
-) WITH (
-  OIDS=FALSE
 );
 ALTER TABLE "${schema}"."${table}" ADD CONSTRAINT "${table}_pk" PRIMARY KEY ("installed_rank");
 

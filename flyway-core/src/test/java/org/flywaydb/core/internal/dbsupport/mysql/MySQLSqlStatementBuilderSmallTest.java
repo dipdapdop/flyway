@@ -1,5 +1,5 @@
-/**
- * Copyright 2010-2016 Boxfuse GmbH
+/*
+ * Copyright 2010-2017 Boxfuse GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -87,6 +87,24 @@ public class MySQLSqlStatementBuilderSmallTest {
         builder.addLine("    PREPARE testStmt FROM @testSQL;");
         builder.addLine("    EXECUTE testStmt;");
         builder.addLine("    DEALLOCATE PREPARE testStmt;");
+        builder.addLine("END $$");
+
+        assertTrue(builder.isTerminated());
+    }
+
+    @Test
+    public void createDefiner() {
+        builder.setDelimiter(new Delimiter("$$", false));
+
+        builder.addLine("CREATE DEFINER=`root`@`localhost` FUNCTION `ampx`.`IS_ADGROUP_CAMPAIGN_ACCOUNT_ACTIVE`(in_adgroup_id INTEGER) RETURNS tinyint(4)");
+        builder.addLine("    READS SQL DATA");
+        builder.addLine("begin");
+        builder.addLine("    select");
+        builder.addLine("    (1 = ag.ADGROUP_STATUS_ID and 1 = c.CAMPAIGN_STATUS_ID and 1 = a.ACCOUNT_STATUS_ID) into result");
+        builder.addLine("    from ADGROUP ag inner join CAMPAIGN c on c.ID = ag.CAMPAIGN_ID");
+        builder.addLine("    inner join ACCOUNT a on a.ID = c.ACCOUNT_ID");
+        builder.addLine("    where ag.ID = in_adgroup_id;");
+        builder.addLine("    return result;");
         builder.addLine("END $$");
 
         assertTrue(builder.isTerminated());

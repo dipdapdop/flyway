@@ -1,5 +1,5 @@
-/**
- * Copyright 2010-2016 Boxfuse GmbH
+/*
+ * Copyright 2010-2017 Boxfuse GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,15 +16,13 @@
 package org.flywaydb.core.internal.util.jdbc;
 
 import org.flywaydb.core.api.FlywayException;
+import org.flywaydb.core.internal.dbsupport.FlywaySqlException;
 import org.flywaydb.core.internal.util.ClassUtils;
 import org.flywaydb.core.internal.util.FeatureDetector;
 import org.flywaydb.core.internal.util.StringUtils;
 
 import javax.sql.DataSource;
 import java.io.PrintWriter;
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.Driver;
 import java.sql.SQLException;
@@ -77,19 +75,9 @@ public class DriverDataSource implements DataSource {
     private final ClassLoader classLoader;
 
     /**
-     * Whether to run in Single Connection mode.
+     * Whether connection should have auto commit activated or not. Default: {@code true}
      */
-    private boolean singleConnectionMode;
-
-    /**
-     * The original Single Connection for single connection mode.
-     */
-    private Connection originalSingleConnection;
-
-    /**
-     * The Single Connection for single connection mode, adjusted to make it suppress close()..
-     */
-    private Connection uncloseableSingleConnection;
+    private boolean autoCommit = true;
 
     /**
      * Creates a new DriverDataSource.
@@ -99,10 +87,25 @@ public class DriverDataSource implements DataSource {
      * @param url         The JDBC URL to use for connecting through the Driver. (required)
      * @param user        The JDBC user to use for connecting through the Driver.
      * @param password    The JDBC password to use for connecting through the Driver.
+     * @throws FlywayException when the datasource could not be created.
+     */
+    public DriverDataSource(ClassLoader classLoader, String driverClass, String url, String user, String password) throws FlywayException {
+        this(classLoader, driverClass, url, user, password, new Properties());
+    }
+
+    /**
+     * Creates a new DriverDataSource.
+     *
+     * @param classLoader The ClassLoader to use.
+     * @param driverClass The name of the JDBC Driver class to use. {@code null} for url-based autodetection.
+     * @param url         The JDBC URL to use for connecting through the Driver. (required)
+     * @param user        The JDBC user to use for connecting through the Driver.
+     * @param password    The JDBC password to use for connecting through the Driver.
+     * @param props       The properties to pass to the connection.
      * @param initSqls    The (optional) sql statements to execute to initialize a connection immediately after obtaining it.
      * @throws FlywayException when the datasource could not be created.
      */
-    public DriverDataSource(ClassLoader classLoader, String driverClass, String url, String user, String password, String... initSqls) throws FlywayException {
+    public DriverDataSource(ClassLoader classLoader, String driverClass, String url, String user, String password, Properties props, String... initSqls) throws FlywayException {
         this.classLoader = classLoader;
         this.url = detectFallbackUrl(url);
 
@@ -113,20 +116,21 @@ public class DriverDataSource implements DataSource {
             }
         }
 
-        this.defaultProps = detectPropsForUrl(url);
+        this.defaultProps = new Properties(props);
+        this.defaultProps.putAll(detectPropsForUrl(url));
 
         try {
             this.driver = ClassUtils.instantiate(driverClass, classLoader);
         } catch (Exception e) {
             String backupDriverClass = detectBackupDriverForUrl(url);
             if (backupDriverClass == null) {
-                throw new FlywayException("Unable to instantiate JDBC driver: " + driverClass, e);
+                throw new FlywayException("Unable to instantiate JDBC driver " + driverClass + " : " + e.getMessage(), e);
             }
             try {
                 this.driver = ClassUtils.instantiate(backupDriverClass, classLoader);
             } catch (Exception e1) {
                 // Only report original exception about primary driver
-                throw new FlywayException("Unable to instantiate JDBC driver: " + driverClass, e);
+                throw new FlywayException("Unable to instantiate JDBC driver: " + driverClass + " : " + e.getMessage(), e);
             }
         }
 
@@ -264,7 +268,6 @@ public class DriverDataSource implements DataSource {
         }
 
         if (url.startsWith("jdbc:sqlite:")) {
-            singleConnectionMode = true;
             if (new FeatureDetector(classLoader).isAndroidAvailable()) {
                 return "org.sqldroid.SQLDroidDriver";
             }
@@ -289,6 +292,10 @@ public class DriverDataSource implements DataSource {
 
         if (url.startsWith(ORACLE_JDBC_URL_PREFIX)) {
             return "oracle.jdbc.OracleDriver";
+        }
+
+        if (url.startsWith("jdbc:edb:")) {
+            return "com.edb.Driver";
         }
 
         if (url.startsWith("jdbc:phoenix")) {
@@ -319,6 +326,10 @@ public class DriverDataSource implements DataSource {
 
         if (url.startsWith("jdbc:sap:")) {
             return "com.sap.db.jdbc.Driver";
+        }
+        
+        if (url.startsWith("jdbc:pivotal:greenplum:")) {
+            return "com.pivotal.jdbc.GreenplumDriver";
         }
 
         return null;
@@ -393,10 +404,6 @@ public class DriverDataSource implements DataSource {
      * @see java.sql.Driver#connect(String, java.util.Properties)
      */
     protected Connection getConnectionFromDriver(String username, String password) throws SQLException {
-        if (singleConnectionMode && (uncloseableSingleConnection != null)) {
-            return uncloseableSingleConnection;
-        }
-
         Properties props = new Properties(this.defaultProps);
         if (username != null) {
             props.setProperty("user", username);
@@ -408,7 +415,7 @@ public class DriverDataSource implements DataSource {
         try {
             connection = driver.connect(url, props);
         } catch (SQLException e) {
-            throw new FlywayException(
+            throw new FlywaySqlException(
                     "Unable to obtain Jdbc connection from DataSource (" + url + ") for user '" + user + "': " + e.getMessage(), e);
         }
 
@@ -422,15 +429,23 @@ public class DriverDataSource implements DataSource {
             }
         }
 
-        if (singleConnectionMode) {
-            originalSingleConnection = connection;
-            InvocationHandler suppressCloseHandler = new SuppressCloseHandler(originalSingleConnection);
-            uncloseableSingleConnection =
-                    (Connection) Proxy.newProxyInstance(classLoader, new Class[]{Connection.class}, suppressCloseHandler);
-            return uncloseableSingleConnection;
-        }
+        connection.setAutoCommit(autoCommit);
 
         return connection;
+    }
+
+    /**
+     * @return Whether connection should have auto commit activated or not. Default: {@code true}
+     */
+    public boolean isAutoCommit() {
+        return autoCommit;
+    }
+
+    /**
+     * @param autoCommit Whether connection should have auto commit activated or not. Default: {@code true}
+     */
+    public void setAutoCommit(boolean autoCommit) {
+        this.autoCommit = autoCommit;
     }
 
     public int getLoginTimeout() throws SQLException {
@@ -459,31 +474,5 @@ public class DriverDataSource implements DataSource {
 
     public Logger getParentLogger() {
         throw new UnsupportedOperationException("getParentLogger");
-    }
-
-    private static class SuppressCloseHandler implements InvocationHandler {
-        private final Connection connection;
-
-        public SuppressCloseHandler(Connection connection) {
-            this.connection = connection;
-        }
-
-        @Override
-        public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
-            if (!"close".equals(method.getName())) {
-                return method.invoke(connection, args);
-            }
-
-            return null;
-        }
-    }
-
-    /**
-     * Closes this datasource.
-     */
-    public void close() {
-        uncloseableSingleConnection = null;
-        JdbcUtils.closeConnection(originalSingleConnection);
-        originalSingleConnection = null;
     }
 }

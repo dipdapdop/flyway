@@ -1,5 +1,5 @@
-/**
- * Copyright 2010-2016 Boxfuse GmbH
+/*
+ * Copyright 2010-2017 Boxfuse GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,15 +28,19 @@ import org.gradle.api.plugins.JavaPluginConvention;
 import org.gradle.api.tasks.SourceSet;
 import org.gradle.api.tasks.TaskAction;
 
+import java.io.IOException;
 import java.net.URL;
+import java.net.URLClassLoader;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
 /**
  * A base class for all flyway tasks.
  */
-abstract class AbstractFlywayTask extends DefaultTask {
+public abstract class AbstractFlywayTask extends DefaultTask {
     /**
      * Property name prefix for placeholders that are configured through System properties.
      */
@@ -203,6 +207,19 @@ abstract class AbstractFlywayTask extends DefaultTask {
     public Boolean cleanOnValidationError;
 
     /**
+     * Ignore missing migrations when reading the metadata table. These are migrations that were performed by an
+     * older deployment of the application that are no longer available in this version. For example: we have migrations
+     * available on the classpath with versions 1.0 and 3.0. The metadata table indicates that a migration with version 2.0
+     * (unknown to us) has also been applied. Instead of bombing out (fail fast) with an exception, a
+     * warning is logged and Flyway continues normally. This is useful for situations where one must be able to deploy
+     * a newer version of the application even though it doesn't contain migrations included with an older one anymore.
+     *
+     * {@code true} to continue normally and log a warning, {@code false} to fail fast with an exception.
+     * (default: {@code false})
+     */
+    public Boolean ignoreMissingMigrations;
+
+    /**
      * Ignore future migrations when reading the metadata table. These are migrations that were performed by a
      * newer deployment of the application that are not yet available in this version. For example: we have migrations
      * available on the classpath up to version 3.0. The metadata table indicates that a migration to version 4.0
@@ -232,9 +249,36 @@ abstract class AbstractFlywayTask extends DefaultTask {
      * Flyway does not migrate the wrong database in case of a configuration mistake!
      * </p>
      *
-     * @param baselineOnMigrate {@code true} if baseline should be called on migrate for non-empty schemas, {@code false} if not. (default: {@code false})
+     * <p>{@code true} if baseline should be called on migrate for non-empty schemas, {@code false} if not. (default: {@code false})</p>
      */
     public Boolean baselineOnMigrate;
+
+    /**
+     * Whether to allow mixing transactional and non-transactional statements within the same migration.
+     * <p>{@code true} if mixed migrations should be allowed. {@code false} if an error should be thrown instead. (default: {@code false})</p>
+     * @deprecated Use <code>mixed</code> instead. Will be removed in Flyway 5.0.
+     */
+    @Deprecated
+    public Boolean allowMixedMigrations;
+
+    /**
+     * Whether to allow mixing transactional and non-transactional statements within the same migration.
+     * <p>{@code true} if mixed migrations should be allowed. {@code false} if an error should be thrown instead. (default: {@code false})</p>
+     */
+    public Boolean mixed;
+
+    /**
+     * Whether to group all pending migrations together in the same transaction when applying them (only recommended for databases with support for DDL transactions).
+     * <p>{@code true} if migrations should be grouped. {@code false} if they should be applied individually instead. (default: {@code false})</p>
+     */
+    public Boolean group;
+
+    /**
+     * The username that will be recorded in the metadata table as having applied the migration.
+     * <p>
+     * {@code null} for the current database user of the connection. (default: {@code null}).
+     */
+    public String installedBy;
 
     public AbstractFlywayTask() {
         super();
@@ -245,30 +289,45 @@ abstract class AbstractFlywayTask extends DefaultTask {
     @TaskAction
     public Object runTask() {
         try {
+            List<URL> extraURLs = new ArrayList<URL>();
             if (isJavaProject()) {
                 JavaPluginConvention plugin = getProject().getConvention().getPlugin(JavaPluginConvention.class);
 
                 for (SourceSet sourceSet : plugin.getSourceSets()) {
                     URL classesUrl = sourceSet.getOutput().getClassesDir().toURI().toURL();
                     getLogger().debug("Adding directory to Classpath: " + classesUrl);
-                    ClassUtils.addJarOrDirectoryToClasspath(UrlUtils.toFilePath(classesUrl));
+                    extraURLs.add(classesUrl);
 
                     URL resourcesUrl = sourceSet.getOutput().getResourcesDir().toURI().toURL();
                     getLogger().debug("Adding directory to Classpath: " + resourcesUrl);
-                    ClassUtils.addJarOrDirectoryToClasspath(UrlUtils.toFilePath(resourcesUrl));
+                    extraURLs.add(resourcesUrl);
                 }
 
-                for (ResolvedArtifact artifact : getProject().getConfigurations().getByName("testRuntime").getResolvedConfiguration().getResolvedArtifacts()) {
-                    URL artifactUrl = artifact.getFile().toURI().toURL();
-                    getLogger().debug("Adding Dependency to Classpath: " + artifactUrl);
-                    ClassUtils.addJarOrDirectoryToClasspath(UrlUtils.toFilePath(artifactUrl));
-                }
+                addDependenciesWithScope(extraURLs,"compile");
+                addDependenciesWithScope(extraURLs,"runtime");
+                addDependenciesWithScope(extraURLs,"testCompile");
+                addDependenciesWithScope(extraURLs,"testRuntime");
             }
 
-            return run(createFlyway());
+            ClassLoader classLoader = new URLClassLoader(
+                    extraURLs.toArray(new URL[extraURLs.size()]),
+                    getProject().getBuildscript().getClassLoader());
+
+            Flyway flyway = new Flyway();
+            flyway.setClassLoader(classLoader);
+            flyway.configure(createFlywayConfig());
+            return run(flyway);
         } catch (Exception e) {
             handleException(e);
             return null;
+        }
+    }
+
+    private void addDependenciesWithScope(List<URL> urls, String scope) throws IOException {
+        for (ResolvedArtifact artifact : getProject().getConfigurations().getByName(scope).getResolvedConfiguration().getResolvedArtifacts()) {
+            URL artifactUrl = artifact.getFile().toURI().toURL();
+            getLogger().debug("Adding Dependency to Classpath: " + artifactUrl);
+            urls.add(artifactUrl);
         }
     }
 
@@ -278,12 +337,10 @@ abstract class AbstractFlywayTask extends DefaultTask {
     protected abstract Object run(Flyway flyway);
 
     /**
-     * Creates a new, configured flyway instance
+     * Creates the Flyway config to use.
      */
-    private Flyway createFlyway() {
+    private Map<String, String> createFlywayConfig() {
         Map<String, String> conf = new HashMap<String, String>();
-        System.out.println(this);
-        System.out.println(extension);
         putIfSet(conf, "driver", driver, extension.driver);
         putIfSet(conf, "url", url, extension.url);
         putIfSet(conf, "user", user, extension.user);
@@ -295,6 +352,10 @@ abstract class AbstractFlywayTask extends DefaultTask {
         putIfSet(conf, "repeatableSqlMigrationPrefix", repeatableSqlMigrationPrefix, extension.repeatableSqlMigrationPrefix);
         putIfSet(conf, "sqlMigrationSeparator", sqlMigrationSeparator, extension.sqlMigrationSeparator);
         putIfSet(conf, "sqlMigrationSuffix", sqlMigrationSuffix, extension.sqlMigrationSuffix);
+        putIfSet(conf, "allowMixedMigrations", allowMixedMigrations, extension.allowMixedMigrations);
+        putIfSet(conf, "mixed", mixed, extension.mixed);
+        putIfSet(conf, "group", group, extension.group);
+        putIfSet(conf, "installedBy", installedBy, extension.installedBy);
         putIfSet(conf, "encoding", encoding, extension.encoding);
         putIfSet(conf, "placeholderReplacement", placeholderReplacement, extension.placeholderReplacement);
         putIfSet(conf, "placeholderPrefix", placeholderPrefix, extension.placeholderPrefix);
@@ -303,6 +364,7 @@ abstract class AbstractFlywayTask extends DefaultTask {
         putIfSet(conf, "outOfOrder", outOfOrder, extension.outOfOrder);
         putIfSet(conf, "validateOnMigrate", validateOnMigrate, extension.validateOnMigrate);
         putIfSet(conf, "cleanOnValidationError", cleanOnValidationError, extension.cleanOnValidationError);
+        putIfSet(conf, "ignoreMissingMigrations", ignoreMissingMigrations, extension.ignoreMissingMigrations);
         putIfSet(conf, "ignoreFutureMigrations", ignoreFutureMigrations, extension.ignoreFutureMigrations);
         putIfSet(conf, "cleanDisabled", cleanDisabled, extension.cleanDisabled);
         putIfSet(conf, "baselineOnMigrate", baselineOnMigrate, extension.baselineOnMigrate);
@@ -330,9 +392,7 @@ abstract class AbstractFlywayTask extends DefaultTask {
         addConfigFromProperties(conf, getProject().getProperties());
         addConfigFromProperties(conf, System.getProperties());
 
-        Flyway flyway = new Flyway();
-        flyway.configure(conf);
-        return flyway;
+        return conf;
     }
 
     private static void addConfigFromProperties(Map<String, String> config, Properties properties) {

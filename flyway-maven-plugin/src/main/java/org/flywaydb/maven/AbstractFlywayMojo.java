@@ -1,5 +1,5 @@
-/**
- * Copyright 2010-2016 Boxfuse GmbH
+/*
+ * Copyright 2010-2017 Boxfuse GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -266,6 +266,21 @@ abstract class AbstractFlywayMojo extends AbstractMojo {
     private boolean outOfOrder = flyway.isOutOfOrder();
 
     /**
+     * Ignore missing migrations when reading the metadata table. These are migrations that were performed by an
+     * older deployment of the application that are no longer available in this version. For example: we have migrations
+     * available on the classpath with versions 1.0 and 3.0. The metadata table indicates that a migration with version 2.0
+     * (unknown to us) has also been applied. Instead of bombing out (fail fast) with an exception, a
+     * warning is logged and Flyway continues normally. This is useful for situations where one must be able to deploy
+     * a newer version of the application even though it doesn't contain migrations included with an older one anymore.
+     *
+     * {@code true} to continue normally and log a warning, {@code false} to fail fast with an exception.
+     * (default: {@code false})
+     *
+     * @parameter property="flyway.ignoreMissingMigrations"
+     */
+    public boolean ignoreMissingMigrations;
+
+    /**
      * Ignore future migrations when reading the metadata table. These are migrations that were performed by a
      * newer deployment of the application that are not yet available in this version. For example: we have migrations
      * available on the classpath up to version 3.0. The metadata table indicates that a migration to version 4.0
@@ -371,6 +386,45 @@ abstract class AbstractFlywayMojo extends AbstractMojo {
      * @parameter property="flyway.validateOnMigrate"
      */
     private boolean validateOnMigrate = flyway.isValidateOnMigrate();
+
+    /**
+     * Whether to allow mixing transactional and non-transactional statements within the same migration.
+     * <p>
+     * {@code true} if mixed migrations should be allowed. {@code false} if an error should be thrown instead. (default: {@code false})
+     *
+     * @parameter property="flyway.allowMixedMigrations"
+     * @deprecated Use <code>mixed</code> instead. Will be removed in Flyway 5.0.
+     */
+    @Deprecated
+    private boolean allowMixedMigrations = flyway.isAllowMixedMigrations();
+
+    /**
+     * Whether to allow mixing transactional and non-transactional statements within the same migration.
+     * <p>
+     * {@code true} if mixed migrations should be allowed. {@code false} if an error should be thrown instead. (default: {@code false})
+     * <p>Also configurable with Maven or System Property: ${flyway.mixed}</p>
+     *
+     * @parameter property="flyway.mixed"
+     */
+    private boolean mixed = flyway.isMixed();
+
+    /**
+     * Whether to group all pending migrations together in the same transaction when applying them (only recommended for databases with support for DDL transactions).
+     * <p>{@code true} if migrations should be grouped. {@code false} if they should be applied individually instead. (default: {@code false})</p>
+     * <p>Also configurable with Maven or System Property: ${flyway.group}</p>
+     *
+     * @parameter property="flyway.group"
+     */
+    private boolean group = flyway.isGroup();
+
+    /**
+     * The username that will be recorded in the metadata table as having applied the migration.
+     * <p>
+     * {@code null} for the current database user of the connection. (default: {@code null}).
+     *
+     * @parameter property="flyway.installedBy"
+     */
+    private String installedBy;
 
     /**
      * Properties file from which to load the Flyway configuration. The names of the individual properties match the ones you would
@@ -496,10 +550,17 @@ abstract class AbstractFlywayMojo extends AbstractMojo {
             flyway.setRepeatableSqlMigrationPrefix(repeatableSqlMigrationPrefix);
             flyway.setSqlMigrationSeparator(sqlMigrationSeparator);
             flyway.setSqlMigrationSuffix(sqlMigrationSuffix);
+            if (allowMixedMigrations) {
+                flyway.setAllowMixedMigrations(allowMixedMigrations);
+            }
+            flyway.setMixed(mixed);
+            flyway.setGroup(group);
+            flyway.setInstalledBy(installedBy);
             flyway.setCleanOnValidationError(cleanOnValidationError);
             flyway.setCleanDisabled(cleanDisabled);
             flyway.setOutOfOrder(outOfOrder);
             flyway.setTargetAsString(target);
+            flyway.setIgnoreMissingMigrations(ignoreMissingMigrations);
             flyway.setIgnoreFutureMigrations(ignoreFutureMigrations);
             if (ignoreFailedFutureMigration) {
                 flyway.setIgnoreFailedFutureMigration(ignoreFailedFutureMigration);
@@ -533,7 +594,7 @@ abstract class AbstractFlywayMojo extends AbstractMojo {
             }
             properties.putAll(getConfigFileProperties());
             properties.putAll(System.getProperties());
-            filterProperties(properties);
+            removeMavenPluginSpecificPropertiesToAvoidWarnings(properties);
             flyway.configure(properties);
 
             doExecute(flyway);
@@ -543,13 +604,15 @@ abstract class AbstractFlywayMojo extends AbstractMojo {
     }
 
     /**
-     * Filters there properties to remove the Flyway Maven Plugin-specific ones.
+     * Filters there properties to remove the Flyway Maven Plugin-specific ones to avoid warnings.
      *
      * @param properties The properties to filter.
      */
-    private static void filterProperties(Properties properties) {
+    private static void removeMavenPluginSpecificPropertiesToAvoidWarnings(Properties properties) {
         properties.remove("flyway.configFile");
         properties.remove("flyway.current");
+        properties.remove("flyway.version");
+        properties.remove("flyway.serverId");
     }
 
     /**

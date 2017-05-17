@@ -1,5 +1,5 @@
-/**
- * Copyright 2010-2016 Boxfuse GmbH
+/*
+ * Copyright 2010-2017 Boxfuse GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -66,6 +66,12 @@ public class OracleSqlStatementBuilderSmallTest {
     @Test
     public void qQuote() {
         builder.addLine("select q'[Hello 'no quotes]' from dual;");
+        assertTrue(builder.isTerminated());
+    }
+
+    @Test
+    public void asNoSpace() {
+        builder.addLine("select '1'as \"QUANTITY\" from dual;");
         assertTrue(builder.isTerminated());
     }
 

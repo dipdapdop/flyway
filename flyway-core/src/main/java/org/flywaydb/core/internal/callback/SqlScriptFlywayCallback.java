@@ -1,5 +1,5 @@
-/**
- * Copyright 2010-2016 Boxfuse GmbH
+/*
+ * Copyright 2010-2017 Boxfuse GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -100,7 +100,7 @@ public class SqlScriptFlywayCallback implements FlywayCallback {
                                 "-> " + existing.getResource().getLocationOnDisk() + "\n" +
                                 "-> " + resource.getLocationOnDisk());
                     }
-                    scripts.put(key, new SqlScript(dbSupport, resource, placeholderReplacer, configuration.getEncoding(), configuration.isAllowMixedMigrations()));
+                    scripts.put(key, new SqlScript(dbSupport, resource, placeholderReplacer, configuration.getEncoding(), configuration.isMixed()));
                 }
             }
         }

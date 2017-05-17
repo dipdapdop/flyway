@@ -1,5 +1,5 @@
 --
--- Copyright 2010-2016 Boxfuse GmbH
+-- Copyright 2010-2017 Boxfuse GmbH
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -15,5 +15,6 @@
 --
 
 BEGIN
-   DBMS_UTILITY.COMPILE_SCHEMA(SCHEMA => 'FLYWAY');
+   DBMS_UTILITY.COMPILE_SCHEMA(SCHEMA => SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA'));
 END;
+/

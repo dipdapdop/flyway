@@ -1,5 +1,5 @@
 --
--- Copyright 2010-2016 Boxfuse GmbH
+-- Copyright 2010-2017 Boxfuse GmbH
 --
 -- Licensed under the Apache License, Version 2.0 (the "License");
 -- you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 -- limitations under the License.
 --
 
-  CREATE OR REPLACE TYPE "PERSON_WITH_COMMENT" force as object
+  CREATE OR REPLACE TYPE "PERSON_WITH_COMMENT" as object
 ( person_id number (15),
   sex       number (1),  ---'1' male, '0' female
   balance   number (10,2)

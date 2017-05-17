@@ -1,5 +1,5 @@
-/**
- * Copyright 2010-2016 Boxfuse GmbH
+/*
+ * Copyright 2010-2017 Boxfuse GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,13 +38,13 @@ public class MySQLMigrationMediumTest extends MySQLMigrationTestCase {
         String password = customProperties.getProperty("mysql.password", "flyway");
         String url = customProperties.getProperty("mysql.url", "jdbc:mysql://localhost/flyway_db");
 
-        return new DriverDataSource(Thread.currentThread().getContextClassLoader(), null, url, user, password);
+        return new DriverDataSource(Thread.currentThread().getContextClassLoader(), null, url, user, password, null);
     }
 
     @Test
     public void migrateWithNonExistingSchemaSetInPropertyButNotInUrl() throws Exception {
         Flyway flyway = new Flyway();
-        flyway.setDataSource("jdbc:mysql://localhost/", "flyway", "flyway");
+        flyway.setDataSource("jdbc:mysql://localhost/flyway_db", "flyway", "flyway");
         flyway.setSchemas("non-existing-schema");
         flyway.setLocations(BASEDIR);
         flyway.clean();
@@ -54,7 +54,7 @@ public class MySQLMigrationMediumTest extends MySQLMigrationTestCase {
     @Test
     public void migrateWithExistingSchemaSetInPropertyButNotInUrl() throws Exception {
         Flyway flyway = new Flyway();
-        flyway.setDataSource("jdbc:mysql://localhost/", "flyway", "flyway");
+        flyway.setDataSource("jdbc:mysql://localhost/flyway_db", "flyway", "flyway");
         flyway.setSchemas("flyway_db");
         flyway.setLocations(getBasedir());
         flyway.clean();

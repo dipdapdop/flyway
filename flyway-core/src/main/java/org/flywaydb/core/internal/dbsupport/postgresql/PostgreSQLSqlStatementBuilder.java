@@ -1,5 +1,5 @@
-/**
- * Copyright 2010-2016 Boxfuse GmbH
+/*
+ * Copyright 2010-2017 Boxfuse GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -73,7 +73,7 @@ public class PostgreSQLSqlStatementBuilder extends SqlStatementBuilder {
 
         if (statementStart.matches("(CREATE|DROP) (DATABASE|TABLESPACE) .*")
                 || statementStart.matches("ALTER SYSTEM .*")
-                || statementStart.matches("CREATE( UNIQUE)? INDEX CONCURRENTLY .*")
+                || statementStart.matches("(CREATE|DROP)( UNIQUE)? INDEX CONCURRENTLY .*")
                 || statementStart.matches("REINDEX( VERBOSE)? (SCHEMA|DATABASE|SYSTEM) .*")
                 || statementStart.matches("VACUUM .*")
                 || statementStart.matches("DISCARD ALL .*")
@@ -81,6 +81,11 @@ public class PostgreSQLSqlStatementBuilder extends SqlStatementBuilder {
                 ) {
             executeInTransaction = false;
         }
+    }
+
+    @Override
+    protected String[] tokenizeLine(String line) {
+        return StringUtils.tokenizeToStringArray(line, " @<>;:=|(),+{}\\[\\]");
     }
 
     @Override
